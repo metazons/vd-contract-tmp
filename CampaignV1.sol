@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
-
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 interface ICampaignV1 {
   function totalVoteCount() external view returns (uint64[] memory);
 
@@ -33,7 +33,7 @@ interface ICampaignV1 {
   ) external;
 }
 
-contract CampaignV1 is ERC1155, ICampaignV1, Ownable {
+contract CampaignV1 is ERC1155, ICampaignV1, Ownable, ReentrancyGuard {
   uint256 private _startDate;
   uint256 private _endDate;
   string private _contractUri;
@@ -46,7 +46,7 @@ contract CampaignV1 is ERC1155, ICampaignV1, Ownable {
 
   mapping(bytes32 => bool) private _isTicketUsed;
 
-  event Voted(uint8[] sortedIds, address voter, uint256 tokenId);
+  event Voted(uint8[] sortedIds, address voter, uint256 tokenId, bytes32 ticket);
 
   constructor(
     string memory tokenBaseUri,
@@ -83,18 +83,15 @@ contract CampaignV1 is ERC1155, ICampaignV1, Ownable {
     _nextTokenId = 0;
   }
 
-  function setUri(string memory newUri) external override {
-    require(_msgSender() == owner(), "not an contract owner");
+  function setUri(string memory newUri) external onlyOwner override {
     _setURI(newUri);
   }
 
-  function setStartDate(uint256 newTimestamp) external override {
-    require(_msgSender() == owner(), "not an contract owner");
+  function setStartDate(uint256 newTimestamp) external onlyOwner override {
     _startDate = newTimestamp;
   }
 
-  function setEndDate(uint256 newTimestamp) external override {
-    require(_msgSender() == owner(), "not an contract owner");
+  function setEndDate(uint256 newTimestamp) external onlyOwner override {
     _endDate = newTimestamp;
   }
 
@@ -119,7 +116,8 @@ contract CampaignV1 is ERC1155, ICampaignV1, Ownable {
     bytes memory memo,
     bytes32 ticket,
     bytes memory signature
-  ) external override {
+  ) external nonReentrant override {
+    // checks
     require(block.timestamp >= _startDate, "vote not started yet");
     require(block.timestamp <= _endDate, "vote is ended already");
     require(!_isVoted[_msgSender()], "User is voted");
@@ -131,14 +129,17 @@ contract CampaignV1 is ERC1155, ICampaignV1, Ownable {
     require(memo.length <= 128, "Memo should be within 128 bytes");
     require(!_isTicketUsed[ticket], "Ticket is used");
     require(_isAuthorized(ticket, signature), "The vote is not authorized");
-    _mint(_msgSender(), _nextTokenId, 1, "");
-    emit Voted(sortedIds, _msgSender(), _nextTokenId);
-    _nextTokenId++;
+    //effects
+    uint256 mintedTokenId = _nextTokenId;
+    _nextTokenId ++;
     for (uint8 i = 0; i < sortedIds.length; i++) {
       _voteCounts[sortedIds[i]] += 1;
     }
     _isVoted[_msgSender()] = true;
     _isTicketUsed[ticket] = true;
+    // interactions
+    _mint(_msgSender(), mintedTokenId, 1, "");
+    emit Voted(sortedIds, _msgSender(), mintedTokenId, ticket);
   }
 
   function _isAuthorized(bytes32 hash, bytes memory signature)
@@ -161,8 +162,7 @@ contract CampaignV1 is ERC1155, ICampaignV1, Ownable {
     return _contractUri;
   }
 
-  function setContractURI(string memory uri) external override {
-    require(_msgSender() == owner(), "not an contract owner");
+  function setContractURI(string memory uri) external onlyOwner override {
     _contractUri = uri;
   }
 }
