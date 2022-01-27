@@ -129,7 +129,7 @@ contract CampaignV1 is ERC1155, ICampaignV1, Ownable {
     );
     require(_isAscendingOrder(sortedIds), "Ids not in ascending order");
     require(memo.length <= 128, "Memo should be within 128 bytes");
-    require(_isTicketUsed[ticket], "Ticket is used");
+    require(!_isTicketUsed[ticket], "Ticket is used");
     require(_isAuthorized(ticket, signature), "The vote is not authorized");
     _mint(_msgSender(), _nextTokenId, 1, "");
     emit Voted(sortedIds, _msgSender(), _nextTokenId);
